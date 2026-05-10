@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
-from src.agent_orchestration.domain.state import AgentState
-from src.agent_orchestration.infrastructure.base_agent import (
+from src.fix_agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
+from src.fix_agent_orchestration.domain.state import AgentState
+from src.fix_agent_orchestration.infrastructure.base_agent import (
     AgentExecutionError,
     BaseAgent,
 )

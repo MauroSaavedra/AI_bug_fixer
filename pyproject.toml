@@ -10,8 +10,8 @@ dependencies = [
     "ollama>=0.2.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    "langsmith>=0.1.0",
     "loguru>=0.7.3",
+    "pytest>=9.0.3",
 ]
 
 [project.optional-dependencies]

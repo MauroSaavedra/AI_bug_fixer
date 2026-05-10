@@ -5,7 +5,7 @@ Tests the Pydantic state model for agent orchestration.
 
 import pytest
 from pydantic import ValidationError
-from src.agent_orchestration.domain.state import AgentState
+from src.fix_agent_orchestration.domain.state import AgentState
 from src.ingestion.domain.entities import CodeEntity, EntityType
 
 

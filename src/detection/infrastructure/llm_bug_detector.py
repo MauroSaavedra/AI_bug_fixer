@@ -6,6 +6,7 @@ and semantic issues that static analysis tools miss.
 """
 
 import asyncio
+import time
 import json
 from pathlib import Path
 from loguru import logger

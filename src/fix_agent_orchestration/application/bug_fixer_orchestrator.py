@@ -11,11 +11,11 @@ The orchestration flow:
 
 from typing import Callable
 
-from src.agent_orchestration.domain.interfaces import IAgent, ILLMClient
-from src.agent_orchestration.domain.state import AgentState
-from src.agent_orchestration.infrastructure.coder_agent import CoderAgent
-from src.agent_orchestration.infrastructure.planner_agent import PlannerAgent
-from src.agent_orchestration.infrastructure.reviewer_agent import ReviewerAgent
+from src.fix_agent_orchestration.domain.interfaces import IAgent, ILLMClient
+from src.fix_agent_orchestration.domain.state import AgentState
+from src.fix_agent_orchestration.infrastructure.coder_agent import CoderAgent
+from src.fix_agent_orchestration.infrastructure.planner_agent import PlannerAgent
+from src.fix_agent_orchestration.infrastructure.reviewer_agent import ReviewerAgent
 from src.ingestion.domain.entities import CodeEntity
 from src.ingestion.infrastructure.chroma_store import ChromaStore
 from loguru import logger
@@ -72,7 +72,6 @@ class BugFixerOrchestrator:
             vector_store: Vector database instance
             temperature: Sampling temperature for agents
             on_state_change: Optional state change callback
-
         Returns:
             Configured BugFixerOrchestrator instance
         """
@@ -87,7 +86,7 @@ class BugFixerOrchestrator:
             vector_store=vector_store,
             on_state_change=on_state_change,
         )
-
+        
     async def fix_bug(
         self,
         user_goal: str,

@@ -6,17 +6,16 @@ and providing a clean interface to the bug fixing system.
 
 import asyncio
 import json
-from pathlib import Path
 from loguru import logger
-from src.agent_orchestration.application.bug_fixer_orchestrator import (
+from src.fix_agent_orchestration.application.bug_fixer_orchestrator import (
     BugFixerOrchestrator,
     FixResult,
 )
-from src.agent_orchestration.infrastructure.ollama_client import OllamaClient
-from src.agent_orchestration.infrastructure.openai_client import OpenAIClient
+from langfuse import observe
+from src.fix_agent_orchestration.infrastructure.ollama_client import OllamaClient
+from src.fix_agent_orchestration.infrastructure.openai_client import OpenAIClient
 from src.config import get_settings
 from src.detection.application.bug_detection_service import BugDetectionService
-from src.detection.domain.entities import BugSeverity
 from src.ingestion.application.ingest_code_service import IngestCodeService
 from src.ingestion.infrastructure.chroma_store import ChromaStore
 from src.ingestion.infrastructure.local_file_system_loader import (
@@ -104,7 +103,7 @@ async def ingest_codebase(directory: str = "./src") -> dict:
 
     return stats
 
-
+@observe(name="detect_bugs")
 async def detect_bugs(directory: str, severity: str | None = None, use_llm: bool = False) -> None:
     """Detect bugs in codebase using static analysis.
 
@@ -188,12 +187,12 @@ async def detect_bugs(directory: str, severity: str | None = None, use_llm: bool
         for error in result.errors:
             logger.info(f"{error}")
 
-
+@observe(name="detect_and_fix_bugs")
 async def detect_and_fix_bugs(
     directory: str,
     severity: str | None = None,
     interactive: bool = True,
-    use_llm: bool = False
+    use_llm: bool = False,
 ) -> None:
     """Detect bugs and offer to fix them.
 
@@ -205,7 +204,7 @@ async def detect_and_fix_bugs(
         interactive: Whether to ask for confirmation before each fix
     """
     # Load configuration
-    config = get_settings()
+    config = get_settings()    
     if severity is None:
         severity = config.detection_severity_threshold
 
@@ -269,7 +268,7 @@ async def detect_and_fix_bugs(
         llm_client=llm_client,
         vector_store=vector_db,
         temperature=0.1,
-    )
+        )
 
     for i, bug in enumerate(bugs_to_fix, 1):
         logger.info(f"\n{'='*60}")
@@ -295,7 +294,6 @@ async def detect_and_fix_bugs(
                 user_goal=bug.to_user_goal(),
                 max_retries=config.max_retries,
             )
-
             if fix_result.success:
                 logger.info(f"Fixed successfully!")
                 if fix_result.fix:
@@ -307,7 +305,6 @@ async def detect_and_fix_bugs(
                 logger.info(f"Fix failed after {fix_result.retry_count} retries")
                 logger.info(f"Feedback: {fix_result.feedback}")
                 failed_count += 1
-
         except Exception as e:
             logger.error(f"Error during fix: {e}")
             failed_count += 1
@@ -321,7 +318,7 @@ async def detect_and_fix_bugs(
     logger.info(f"   Failed: {failed_count}")
     logger.info(f"   Skipped: {skipped_count}")
 
-
+@observe(name="fix_bug_workflow")
 async def fix_bug(user_goal: str, max_retries: int = 3) -> None:
     """Fix a bug using the multi-agent system.
 
@@ -380,7 +377,7 @@ async def fix_bug(user_goal: str, max_retries: int = 3) -> None:
         user_goal=user_goal,
         max_retries=max_retries,
     )
-    
+
     save_fix_result_report(result, 1, config.result_folder)
 
     # Display result
@@ -389,8 +386,7 @@ async def fix_bug(user_goal: str, max_retries: int = 3) -> None:
     logger.info("=" * 60)
     logger.info(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
 
-
-
+    
 def save_fix_result_report(fix_result: FixResult, index: int, folder: str):
     """Save fix result as JSON and Markdown reports.
     
@@ -552,7 +548,6 @@ Examples:
     )
 
     args = parser.parse_args()
-
     try:
         if args.ingest:
             # Run ingestion
@@ -560,7 +555,6 @@ Examples:
             logger.info("Ingestion complete!")
             logger.info(f"Files processed: {stats['total_files']}")
             logger.info(f"Entities indexed: {stats['total_entities']}")
-
         elif args.detect:
             # Detect only
             await detect_bugs(args.detect, args.severity, args.use_llm_discovery)

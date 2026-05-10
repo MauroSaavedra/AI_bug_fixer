@@ -5,7 +5,7 @@ Tests the persona configurations and prompt templates.
 
 import pytest
 
-from src.agent_orchestration.domain.personas import (
+from src.fix_agent_orchestration.domain.personas import (
     AgentPersona,
     AgentPersonas,
     build_retry_context,

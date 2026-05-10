@@ -5,7 +5,7 @@ import httpx
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
-from src.agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
+from src.fix_agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
 
 
 class OpenAIClient(ILLMClient):

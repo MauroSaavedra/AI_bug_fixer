@@ -165,23 +165,6 @@ class Settings(BaseSettings):
             raise ValueError(f"threshold must be one of {allowed}, got '{v}'")
         return upper_v
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # LangSmith Observability Configuration
-    # ─────────────────────────────────────────────────────────────────────────
-    langchain_tracing_v2: bool = Field(
-        default=False,
-        description="Enable LangSmith tracing",
-    )
-    langchain_api_key: str = Field(
-        default="",
-        description="LangSmith API key",
-    )
-    langchain_project: str = Field(
-        default="agentic-source",
-        description="LangSmith project name",
-    )
-
-
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance.

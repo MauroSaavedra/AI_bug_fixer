@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import AsyncIterator
 
 from src.ingestion.domain.entities import CodeEntity
-from src.agent_orchestration.domain.state import AgentState
+from src.fix_agent_orchestration.domain.state import AgentState
 
 
 class IAgent(ABC):

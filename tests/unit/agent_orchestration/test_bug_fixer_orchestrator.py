@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent_orchestration.application.bug_fixer_orchestrator import (
+from src.fix_agent_orchestration.application.bug_fixer_orchestrator import (
     BugFixerOrchestrator,
     FixResult,
 )
-from src.agent_orchestration.domain.interfaces import IAgent, ILLMClient
-from src.agent_orchestration.domain.state import AgentState
+from src.fix_agent_orchestration.domain.interfaces import IAgent, ILLMClient
+from src.fix_agent_orchestration.domain.state import AgentState
 from src.ingestion.domain.entities import CodeEntity, EntityType
 from src.ingestion.infrastructure.chroma_store import ChromaStore
 

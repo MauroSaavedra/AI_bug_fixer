@@ -3,7 +3,7 @@ from typing import AsyncIterator
 import ollama
 from ollama import AsyncClient
 
-from src.agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
+from src.fix_agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
 
 
 class OllamaClient(ILLMClient):

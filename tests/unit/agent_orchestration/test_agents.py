@@ -9,11 +9,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
-from src.agent_orchestration.domain.state import AgentState
-from src.agent_orchestration.infrastructure.coder_agent import CoderAgent
-from src.agent_orchestration.infrastructure.planner_agent import PlannerAgent
-from src.agent_orchestration.infrastructure.reviewer_agent import ReviewerAgent
+from src.fix_agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
+from src.fix_agent_orchestration.domain.state import AgentState
+from src.fix_agent_orchestration.infrastructure.coder_agent import CoderAgent
+from src.fix_agent_orchestration.infrastructure.planner_agent import PlannerAgent
+from src.fix_agent_orchestration.infrastructure.reviewer_agent import ReviewerAgent
 from src.ingestion.domain.entities import CodeEntity, EntityType
 
 
