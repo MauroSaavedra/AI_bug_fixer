@@ -10,6 +10,10 @@ import time
 import json
 from pathlib import Path
 from loguru import logger
+try:
+    from langfuse import observe
+except ImportError:
+    observe = None  # type: ignore[assignment]
 from src.detection.domain.entities import (
     BugSeverity,
     BugSource,
@@ -19,6 +23,7 @@ from src.detection.domain.entities import (
 from src.detection.domain.interfaces import IBugDetector
 from src.ingestion.domain.entities import EntityType
 from src.ingestion.infrastructure.python_ast_chunker import PythonASTChunker
+from src.observability.langfuse_utils import update_current_generation
 
 
 class LLMBugDetector(IBugDetector):
@@ -207,6 +212,7 @@ class LLMBugDetector(IBugDetector):
 
         return False
 
+    @observe(name="llm_bug_detection", as_type="span")
     async def _analyze_entity(
         self,
         entity,
@@ -223,18 +229,28 @@ class LLMBugDetector(IBugDetector):
         Returns:
             List of detected bugs or None
         """
-        # Build analysis prompt
         prompt = self._build_analysis_prompt(entity, full_content)
 
-        # Call LLM
+        # Call LLM with Langfuse observability (v4 API)
+        messages = [
+            {"role": "system", "content": self._system_prompt()},
+            {"role": "user", "content": prompt},
+        ]
         try:
             response = await self.llm_client.chat(
-                messages=[
-                    {"role": "system", "content": self._system_prompt()},
-                    {"role": "user", "content": prompt},
-                ],
+                messages=messages,
                 temperature=0.1,
                 max_tokens=2048,
+            )
+            # Update the current Langfuse generation
+            update_current_generation(
+                model=getattr(self.llm_client, "model_name", "unknown"),
+                model_parameters={
+                    "temperature": 0.1,
+                    "max_tokens": 2048,
+                    "provider": getattr(self.llm_client, "provider_name", "unknown"),
+                    "agent_name": "LLMBugDetector",
+                },
             )
         except Exception as e:
             logger.warning(f"LLM call failed for {entity.name}: {e}")

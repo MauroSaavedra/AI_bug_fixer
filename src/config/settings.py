@@ -164,6 +164,26 @@ class Settings(BaseSettings):
         if upper_v not in allowed:
             raise ValueError(f"threshold must be one of {allowed}, got '{v}'")
         return upper_v
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Langfuse Observability Configuration
+    # ─────────────────────────────────────────────────────────────────────────
+    langfuse_tracing: bool = Field(
+        default=False,
+        description="Enable Langfuse tracing",
+    )
+    langfuse_secret_key: str = Field(
+        default="",
+        description="Langfuse secret key",
+    )
+    langfuse_public_key: str = Field(
+        default="agentic-source",
+        description="Langfuse public key",
+    )
+    langfuse_base_url: str = Field(
+        default="https://cloud.langfuse.com",
+        description="Langfuse base url",
+    )
 
 @lru_cache
 def get_settings() -> Settings:

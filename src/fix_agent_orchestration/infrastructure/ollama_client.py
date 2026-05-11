@@ -4,6 +4,7 @@ import ollama
 from ollama import AsyncClient
 
 from src.fix_agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
+from src.observability.langfuse_utils import update_current_generation
 
 
 class OllamaClient(ILLMClient):
@@ -15,6 +16,7 @@ class OllamaClient(ILLMClient):
     - Async operations with configurable timeout
     - Streaming support
     - Automatic fallback handling
+    - Langfuse observability for prompt/response tracking
 
     Note: Requires Ollama server running locally at the configured base_url.
     """
@@ -118,7 +120,7 @@ class OllamaClient(ILLMClient):
                 # Extract content
                 content = response.message.content if response.message else ""
 
-                return LLMResponse(
+                llm_response = LLMResponse(
                     content=content,
                     provider=self.provider_name,
                     model=self._model,
@@ -126,6 +128,27 @@ class OllamaClient(ILLMClient):
                     finish_reason="stop",
                     latency_ms=latency_ms,
                 )
+
+                # Update Langfuse generation (v4 API)
+                try:
+                    update_current_generation(
+                        model=self._model,
+                        model_parameters={
+                            "temperature": temperature,
+                            "max_tokens": max_tokens,
+                            "stream": stream,
+                            "provider": "ollama",
+                        },
+                        usage_details=None,
+                        metadata={
+                            "latency_ms": latency_ms,
+                            "finish_reason": "stop",
+                        },
+                    )
+                except Exception:
+                    pass
+
+                return llm_response
 
         except ollama.ResponseError as e:
             if "model not found" in str(e).lower():

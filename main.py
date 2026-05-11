@@ -21,6 +21,9 @@ from src.ingestion.infrastructure.chroma_store import ChromaStore
 from src.ingestion.infrastructure.local_file_system_loader import (
     LocalFileSystemLoader,
 )
+from src.ingestion.infrastructure.local_file_system_loader import (
+    LocalFileSystemLoader,
+)
 
 
 def create_llm_client(config):

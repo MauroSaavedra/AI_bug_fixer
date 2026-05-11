@@ -11,6 +11,11 @@ The orchestration flow:
 
 from typing import Callable
 
+try:
+    from langfuse import observe
+except ImportError:
+    observe = lambda func=None, **kwargs: (func if func else lambda f: f)  # type: ignore[assignment]
+
 from src.fix_agent_orchestration.domain.interfaces import IAgent, ILLMClient
 from src.fix_agent_orchestration.domain.state import AgentState
 from src.fix_agent_orchestration.infrastructure.coder_agent import CoderAgent
@@ -18,6 +23,7 @@ from src.fix_agent_orchestration.infrastructure.planner_agent import PlannerAgen
 from src.fix_agent_orchestration.infrastructure.reviewer_agent import ReviewerAgent
 from src.ingestion.domain.entities import CodeEntity
 from src.ingestion.infrastructure.chroma_store import ChromaStore
+from src.observability.langfuse_utils import update_current_span
 from loguru import logger
 
 class BugFixerOrchestrator:
@@ -32,6 +38,7 @@ class BugFixerOrchestrator:
     - Configurable retry logic
     - Detailed execution logging
     - Result aggregation
+    - Langfuse observability for full workflow tracing
     """
 
     def __init__(
@@ -87,6 +94,7 @@ class BugFixerOrchestrator:
             on_state_change=on_state_change,
         )
         
+    @observe(name="bug_fix_workflow", as_type="span")
     async def fix_bug(
         self,
         user_goal: str,
@@ -124,6 +132,17 @@ class BugFixerOrchestrator:
             # Notify callback if registered
             if self._on_state_change:
                 self._on_state_change(state)
+
+        # Update Langfuse span with final metadata (v4 API)
+        update_current_span(
+            metadata={
+                "user_goal": user_goal,
+                "max_retries": max_retries,
+                "final_status": state.status,
+                "retry_count": state.retry_count,
+                "success": state.status == "approved",
+            }
+        )
 
         # Return result
         return FixResult(

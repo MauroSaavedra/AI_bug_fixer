@@ -7,6 +7,40 @@ from loguru import logger
 from src.fix_agent_orchestration.domain.interfaces import IAgent, ILLMClient, LLMResponse
 from src.fix_agent_orchestration.domain.personas import AgentPersona, AgentPersonas
 from src.fix_agent_orchestration.domain.state import AgentState
+from src.observability.langfuse_utils import (
+    update_current_generation,
+    update_current_span,
+)
+from src.observability.base_agent_observer import (  # type: ignore[attr-defined]
+    trace_agent_execution,
+)
+
+try:
+    from langfuse import observe
+except ImportError:
+    observe = None  # type: ignore[assignment]
+
+
+def _make_observe_wrapper(agent_instance):
+    """Create a Langfuse observe wrapper for an agent instance.
+    
+    This is a factory that returns a decorator binding the agent's name.
+    """
+    def decorator(func):
+        if observe is None:
+            return func
+        return observe(name=f"{agent_instance.name}_agent", as_type="span")(func)
+    return decorator
+
+
+def _wrap_method(obj, method_name, wrapper_factory):
+    """Wrap an existing method with a dynamic decorator.
+    
+    This mutates the object in-place.
+    """
+    original = getattr(obj, method_name)
+    wrapper = wrapper_factory(original)
+    setattr(obj, method_name, wrapper)
 
 
 class BaseAgent(IAgent):
@@ -17,6 +51,7 @@ class BaseAgent(IAgent):
     - Prompt building from personas
     - Structured JSON output parsing
     - Error handling with fallbacks
+    - Langfuse observability for agent execution and LLM calls
 
     Subclasses implement the specific agent logic in `_execute_core()`.
     """
@@ -32,6 +67,15 @@ class BaseAgent(IAgent):
         self._temperature = temperature
         self._persona = AgentPersonas.get_persona(self.name)
 
+        # Dynamically wrap execute() with Langfuse observe for this instance
+        if observe is not None:
+            original_execute = self.execute
+            # We need to look up the (already bound) method on the instance
+            @observe(name=f"{self.name}_agent", as_type="span")
+            async def _wrapped(state: AgentState) -> AgentState:
+                return await original_execute(state)
+            self.execute = _wrapped  # type: ignore[method-assign]
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -42,7 +86,7 @@ class BaseAgent(IAgent):
     def description(self) -> str:
         """Get agent description from persona."""
         return self._persona.system_prompt[:100] + "..."
-                                     
+                                      
     async def execute(self, state: AgentState) -> AgentState:
         """Execute the agent's logic.
 
@@ -112,11 +156,25 @@ class BaseAgent(IAgent):
             {"role": "user", "content": task_prompt},
         ]
 
-        return await self._llm_client.chat(
+        response = await self._llm_client.chat(
             messages=messages,
             temperature=self._temperature,
         )
 
+        # Update Langfuse with generation metadata (v4 API)
+        update_current_generation(
+            model=getattr(self._llm_client, "model_name", "unknown"),
+            model_parameters={"temperature": self._temperature,
+                              "max_tokens": None, "stream": False},
+            metadata={
+                "agent_name": self.name,
+                "provider": getattr(self._llm_client, "provider_name", "unknown"),
+                "latency_ms": response.latency_ms,
+                "finish_reason": response.finish_reason,
+            },
+        )
+
+        return response
 
     def _parse_json_response(self, content: str) -> dict[str, Any]:
         """Parse JSON from LLM response with robust extraction.

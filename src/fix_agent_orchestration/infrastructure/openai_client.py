@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
 from src.fix_agent_orchestration.domain.interfaces import ILLMClient, LLMResponse
+from src.observability.langfuse_utils import update_current_generation
 
 
 class OpenAIClient(ILLMClient):
@@ -17,6 +18,7 @@ class OpenAIClient(ILLMClient):
     - Automatic retry with exponential backoff
     - Token usage tracking
     - Configurable temperature and max_tokens
+    - Langfuse observability for prompt/response tracking
     """
 
     def __init__(
@@ -122,7 +124,7 @@ class OpenAIClient(ILLMClient):
                 choice = response.choices[0]
                 content = choice.message.content or ""
 
-                return LLMResponse(
+                llm_response = LLMResponse(
                     content=content,
                     provider=self.provider_name,
                     model=self._model,
@@ -130,6 +132,29 @@ class OpenAIClient(ILLMClient):
                     finish_reason=choice.finish_reason,
                     latency_ms=latency_ms,
                 )
+
+                # Update Langfuse generation (v4 API)
+                try:
+                    update_current_generation(
+                        model=self._model,
+                        model_parameters={
+                            "temperature": temperature,
+                            "max_tokens": max_tokens,
+                            "stream": stream,
+                            "provider": "openai",
+                        },
+                        usage_details={
+                            "total": response.usage.total_tokens if response.usage else None
+                        } if response.usage else None,
+                        metadata={
+                            "latency_ms": latency_ms,
+                            "finish_reason": choice.finish_reason,
+                        },
+                    )
+                except Exception:
+                    pass
+
+                return llm_response
 
         except Exception as e:
             raise RuntimeError(f"OpenAI API error: {e}") from e

@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "loguru>=0.7.3",
     "pytest>=9.0.3",
+    "langfuse>=2.44.0",
 ]
 
 [project.optional-dependencies]
