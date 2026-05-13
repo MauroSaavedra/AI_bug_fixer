@@ -340,24 +340,10 @@ Then follow the prompts to:
 
 ## Testing
 
-Run the comprehensive test suite:
+Run the test suite:
 
 ```bash
 # Run all tests
-pytest tests/
+python -m pytest tests/
 
-# Run with coverage
-pytest tests/ --cov=src --cov-report=html
-
-# Run specific test file
-pytest tests/unit/detection/test_static_analyzer.py -v
 ```
-
-### Test Structure
-
-- **Config Tests**: Settings validation, environment variables
-- **Detection Tests**: Static analysis, entity extraction, bug filtering
-- **Discovery Tests**: Pattern matching, anti-pattern detection
-- **Observability Tests**: Metrics collection, Langfuse tracing
-- **Ingestion Tests**: AST chunking, file loading
-- **Agent Tests**: State management, agent workflows
