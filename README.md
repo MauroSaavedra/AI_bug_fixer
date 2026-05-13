@@ -1,6 +1,6 @@
 # AI bug fixer (Python)
 
-**AI bug fixer** is an AI project designed to detect bugs in python files (with or without LLMs) and apply fixes (using a multiagent LLM setup).
+**AI bug fixer** is an AI project designed to detect bugs in python files (using static analyzers and optionally a LLM) and apply fixes (using a multiagent LLM setup).
 
 ## Features
 
@@ -29,7 +29,7 @@ A observability module has been added and it is optional, Langfuse credentials s
 ### Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
 
     %% =========================
     %% Detection Layer
