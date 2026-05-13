@@ -30,7 +30,7 @@ class IBugDetector(ABC):
         pass
 
     @abstractmethod
-    async def detect(self, directory: str | Path) -> list[DetectedBug]:
+    def detect(self, directory: str | Path) -> list[DetectedBug]:
         """Run detection on the given directory.
 
         Args:
@@ -45,7 +45,7 @@ class IBugDetector(ABC):
         pass
 
     @abstractmethod
-    async def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
+    def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
         """Run detection on a single file.
 
         Args:
@@ -65,7 +65,7 @@ class IDetectionService(ABC):
     """
 
     @abstractmethod
-    async def detect_bugs(
+    def detect_bugs(
         self,
         directory: str | Path,
         include_tests: bool = True,
@@ -82,7 +82,7 @@ class IDetectionService(ABC):
         pass
 
     @abstractmethod
-    def register_detector(self, detector: IBugDetector) -> None:
+    def register_detector(self, detector: "IBugDetector") -> None:
         """Register a new bug detector.
 
         Args:

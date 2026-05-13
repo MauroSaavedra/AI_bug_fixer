@@ -4,7 +4,7 @@ Tests the application service that orchestrates the ingestion pipeline.
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -26,7 +26,6 @@ class TestIngestCodeService:
     def mock_vector_store(self):
         """Create a mock vector store."""
         store = MagicMock(spec=IVectorStore)
-        store.save_entities = AsyncMock()
         return store
 
     @pytest.fixture
@@ -59,8 +58,7 @@ class TestIngestCodeService:
             ),
         ]
 
-    @pytest.mark.asyncio
-    async def test_execute_success(self, mock_file_source, mock_vector_store, sample_entities):
+    def test_execute_success(self, mock_file_source, mock_vector_store, sample_entities):
         """Test successful ingestion execution."""
         # Setup
         mock_file_source.load_entities.return_value = sample_entities
@@ -70,7 +68,7 @@ class TestIngestCodeService:
         )
 
         # Execute
-        stats = await service.execute("/test/directory")
+        stats = service.execute("/test/directory")
 
         # Verify
         assert stats["total_files"] == 2
@@ -82,8 +80,7 @@ class TestIngestCodeService:
         mock_file_source.load_entities.assert_called_once_with("/test/directory")
         mock_vector_store.save_entities.assert_called_once_with(sample_entities)
 
-    @pytest.mark.asyncio
-    async def test_execute_empty_directory(self, mock_file_source, mock_vector_store):
+    def test_execute_empty_directory(self, mock_file_source, mock_vector_store):
         """Test execution with no files found."""
         # Setup
         mock_file_source.load_entities.return_value = []
@@ -93,7 +90,7 @@ class TestIngestCodeService:
         )
 
         # Execute
-        stats = await service.execute("/empty/directory")
+        stats = service.execute("/empty/directory")
 
         # Verify
         assert stats["total_files"] == 0
@@ -103,8 +100,7 @@ class TestIngestCodeService:
         mock_file_source.load_entities.assert_called_once()
         mock_vector_store.save_entities.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_execute_file_not_found(self, mock_file_source, mock_vector_store):
+    def test_execute_file_not_found(self, mock_file_source, mock_vector_store):
         """Test execution when directory doesn't exist."""
         # Setup
         mock_file_source.load_entities.side_effect = FileNotFoundError("Directory not found")
@@ -115,10 +111,9 @@ class TestIngestCodeService:
 
         # Execute and verify
         with pytest.raises(FileNotFoundError, match="Directory not found"):
-            await service.execute("/nonexistent")
+            service.execute("/nonexistent")
 
-    @pytest.mark.asyncio
-    async def test_execute_vector_store_error(self, mock_file_source, mock_vector_store, sample_entities):
+    def test_execute_vector_store_error(self, mock_file_source, mock_vector_store, sample_entities):
         """Test execution when vector store fails."""
         # Setup
         mock_file_source.load_entities.return_value = sample_entities
@@ -130,7 +125,7 @@ class TestIngestCodeService:
 
         # Execute and verify
         with pytest.raises(RuntimeError, match="Database error"):
-            await service.execute("/test/directory")
+            service.execute("/test/directory")
 
     def test_analyze_entities(self, sample_entities):
         """Test entity analysis."""

@@ -217,7 +217,7 @@ class BugFixerOrchestrator:
         # Perform semantic search
         logger.info(f"Query: {state.search_query[:60]}...")
         try:
-            entities = await self._vector_store.similarity_search(
+            entities = self._vector_store.similarity_search(
                 query=state.search_query,
                 limit=5,
             )

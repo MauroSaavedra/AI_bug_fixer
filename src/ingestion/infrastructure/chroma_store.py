@@ -31,7 +31,7 @@ class ChromaStore(IVectorStore):
         self.collection = self.client.get_or_create_collection(name=collection_name)
         self.collection_name = collection_name
 
-    async def save_chunks(self, chunks: list[CodeChunk]) -> None:
+    def save_chunks(self, chunks: list[CodeChunk]) -> None:
         """Persist legacy code chunks (backward compatibility).
 
         Args:
@@ -42,9 +42,9 @@ class ChromaStore(IVectorStore):
 
         # Convert to entities for unified storage
         entities = [chunk.to_entity() for chunk in chunks]
-        await self.save_entities(entities)
+        self.save_entities(entities)
 
-    async def save_entities(self, entities: list[CodeEntity]) -> None:
+    def save_entities(self, entities: list[CodeEntity]) -> None:
         """Persist AST-extracted entities to ChromaDB.
 
         Each entity is stored with:
@@ -80,7 +80,7 @@ class ChromaStore(IVectorStore):
         except Exception as e:
             raise RuntimeError(f"Failed to save entities to ChromaDB: {e}") from e
 
-    async def similarity_search(
+    def similarity_search(
         self,
         query: str,
         limit: int = 5,
@@ -154,7 +154,7 @@ class ChromaStore(IVectorStore):
 
         return entities
 
-    async def get_collection_stats(self) -> dict:
+    def get_collection_stats(self) -> dict:
         """Get statistics about the stored collection.
 
         Returns:
@@ -166,7 +166,6 @@ class ChromaStore(IVectorStore):
         count = self.collection.count()
 
         # Get entity type distribution
-        # Note: This requires a full scan, so it's done sparingly
         entity_type_counts = {}
         if count > 0:
             all_data = self.collection.get()

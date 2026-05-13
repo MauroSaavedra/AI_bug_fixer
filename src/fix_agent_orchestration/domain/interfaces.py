@@ -151,7 +151,7 @@ class IVectorStore(ABC):
     """Abstract interface for vector database operations."""
 
     @abstractmethod
-    async def similarity_search(
+    def similarity_search(
         self,
         query: str,
         limit: int = 5,
@@ -171,6 +171,7 @@ class IVectorStore(ABC):
             VectorStoreError: If search operation fails
         """
         pass
+
 
 class LLMResponse:
     """Response from LLM client."""

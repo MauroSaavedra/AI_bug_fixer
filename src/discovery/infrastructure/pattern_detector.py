@@ -28,7 +28,7 @@ class PatternDetector:
     PATTERNS = {
         # Dictionary access patterns
         "dict_direct_access": {
-            "pattern": r"\[['\"](\w+)['\"]\]",
+            "pattern": r"\['\"](\w+)['\"]",
             "message": "Direct dictionary access without .get() - may raise KeyError",
             "suggestion": "Use .get() method or check if key exists first",
             "severity": BugSeverity.WARNING,
@@ -115,7 +115,7 @@ class PatternDetector:
         """Pattern detector is always available."""
         return True
 
-    async def detect(self, directory: str | Path) -> list[DetectedBug]:
+    def detect(self, directory: str | Path) -> list[DetectedBug]:
         """Detect bugs in all Python files in directory.
 
         Args:
@@ -135,7 +135,7 @@ class PatternDetector:
 
         return bugs
 
-    async def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
+    def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
         """Detect bugs in a single file.
 
         Args:
@@ -313,7 +313,7 @@ class AntiPatternRegistry:
             "suggestion": suggestion,
         }
 
-    def get_detector(self) -> PatternDetector:
+    def get_detector(self) -> "PatternDetector":
         """Get a detector with registered patterns."""
         detector = PatternDetector()
         detector.PATTERNS.update(self._patterns)

@@ -49,7 +49,7 @@ class TestFailureParser(IBugDetector):
             return self.test_output_path.exists()
         return True  # Will try to parse from provided text
 
-    async def detect(self, directory: str | Path) -> list[DetectedBug]:
+    def detect(self, directory: str | Path) -> list[DetectedBug]:
         """Parse test failures from output file.
 
         Args:
@@ -59,16 +59,13 @@ class TestFailureParser(IBugDetector):
             List of detected bugs from test failures
         """
         if self.test_output_path and self.test_output_path.exists():
-            # Try to determine format from file extension
             if self.test_output_path.suffix == ".xml":
                 return self._parse_junit_xml(self.test_output_path)
             elif self.test_output_path.suffix == ".json":
                 return self._parse_pytest_json(self.test_output_path)
             else:
-                # Try to parse as text
                 return self._parse_pytest_text(self.test_output_path)
 
-        # Look for common output files in directory
         directory = Path(directory)
         bugs: list[DetectedBug] = []
 
@@ -84,7 +81,7 @@ class TestFailureParser(IBugDetector):
 
         return bugs
 
-    async def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
+    def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
         """Parse test failures from a specific file.
 
         Args:
@@ -101,17 +98,6 @@ class TestFailureParser(IBugDetector):
             return self._parse_pytest_json(file_path)
         else:
             return self._parse_pytest_text(file_path)
-
-    def parse_text(self, text: str) -> list[DetectedBug]:
-        """Parse test failure text directly.
-
-        Args:
-            text: Raw pytest output text
-
-        Returns:
-            List of detected bugs
-        """
-        return self._parse_pytest_output(text)
 
     def _parse_junit_xml(self, file_path: Path) -> list[DetectedBug]:
         """Parse JUnit XML test results."""

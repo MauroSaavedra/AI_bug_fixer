@@ -1,7 +1,7 @@
-"""Domain interfaces for the ingestion slice.
+"""Ingestion layer domain interfaces.
 
-These abstract interfaces define contracts that infrastructure implementations
-must fulfill, enabling dependency inversion and easy swapping of implementations.
+These interfaces define the contracts for the ingestion pipeline,
+enabling loose coupling between domain logic and infrastructure.
 """
 
 from abc import ABC, abstractmethod
@@ -10,141 +10,84 @@ from pathlib import Path
 from src.ingestion.domain.entities import CodeChunk, CodeEntity
 
 
-class IVectorStore(ABC):
-    """Abstract interface for vector database operations.
-
-    This interface abstracts the underlying vector store implementation,
-    allowing the application to work with any compatible vector database.
-    """
-
-    @abstractmethod
-    async def save_chunks(self, chunks: list[CodeChunk]) -> None:
-        """Persist chunks to the vector store.
-
-        Args:
-            chunks: List of code chunks to store
-
-        Raises:
-            VectorStoreError: If storage operation fails
-        """
-        pass
-
-    @abstractmethod
-    async def save_entities(self, entities: list[CodeEntity]) -> None:
-        """Persist AST-extracted entities to the vector store.
-
-        This is the preferred method for storing code with AST-based chunking.
-
-        Args:
-            entities: List of code entities to store
-
-        Raises:
-            VectorStoreError: If storage operation fails
-        """
-        pass
-
-    @abstractmethod
-    async def similarity_search(
-        self, query: str, limit: int = 5, filter_dict: dict | None = None
-    ) -> list[CodeEntity]:
-        """Search for similar code entities.
-
-        Args:
-            query: The search query text
-            limit: Maximum number of results to return
-            filter_dict: Optional metadata filters
-
-        Returns:
-            List of matching code entities, ranked by relevance
-
-        Raises:
-            VectorStoreError: If search operation fails
-        """
-        pass
-
-    @abstractmethod
-    async def get_collection_stats(self) -> dict:
-        """Get statistics about the stored collection.
-
-        Returns:
-            Dictionary with collection metadata (count, dimensions, etc.)
-        """
-        pass
-
-
 class IFileSystemLoader(ABC):
-    """Abstract interface for file system operations.
-
-    Abstracts the file reading logic, allowing for testing with mock
-    file systems or remote file sources.
-    """
+    """Interface for loading source code from the file system."""
 
     @abstractmethod
-    def load_files(self, path: str | Path) -> list[CodeChunk]:
-        """Load code files from the given path.
+    def load_entities(self, directory_path: str) -> list[CodeEntity]:
+        """Load and parse code entities from the given directory.
 
         Args:
-            path: Directory or file path to load
+            directory_path: The root directory to scan.
 
         Returns:
-            List of code chunks extracted from files
-
-        Raises:
-            FileNotFoundError: If path does not exist
-            PermissionError: If files cannot be read
+            A list of parsed code entities.
         """
-        pass
-
-    @abstractmethod
-    def load_entities(self, path: str | Path) -> list[CodeEntity]:
-        """Load and parse code files using AST-based extraction.
-
-        This is the preferred method for loading code with full semantic
-        understanding of functions, classes, and methods.
-
-        Args:
-            path: Directory or file path to load
-
-        Returns:
-            List of code entities with complete metadata
-
-        Raises:
-            FileNotFoundError: If path does not exist
-            PermissionError: If files cannot be read
-            SyntaxError: If Python files contain syntax errors
-        """
-        pass
+        raise NotImplementedError
 
 
 class IChunker(ABC):
-    """Abstract interface for code chunking strategies.
-
-    Enables different chunking approaches (AST-based, token-based, etc.)
-    to be used interchangeably.
-    """
+    """Interface for chunking code into semantic entities."""
 
     @abstractmethod
     def chunk_file(self, file_path: Path, content: str) -> list[CodeEntity]:
-        """Extract code entities from a single file.
+        """Parse a file and extract semantic code entities.
 
         Args:
-            file_path: Path to the source file
-            content: File content as string
+            file_path: Path to the source file.
+            content: Raw content of the file.
 
         Returns:
-            List of code entities extracted from the file
-
-        Raises:
-            SyntaxError: If file cannot be parsed
-            ValueError: If content is invalid
+            A list of code entities extracted from the file.
         """
-        pass
+        raise NotImplementedError
+
+
+class IVectorStore(ABC):
+    """Interface for a vector database that persists code entities."""
 
     @abstractmethod
-    def get_supported_extensions(self) -> set[str]:
-        """Get file extensions supported by this chunker.
+    def save_chunks(self, chunks: list[CodeChunk]) -> None:
+        """Persist legacy code chunks (backward compatibility).
+
+        Args:
+            chunks: List of CodeChunk objects
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_entities(self, entities: list[CodeEntity]) -> None:
+        """Persist AST-extracted entities.
+
+        Args:
+            entities: List of CodeEntity objects
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def similarity_search(
+        self,
+        query: str,
+        limit: int = 5,
+        filter_dict: dict | None = None,
+    ) -> list[CodeEntity]:
+        """Search for semantically similar code entities.
+
+        Args:
+            query: The search query text
+            limit: Maximum number of results
+            filter_dict: Optional metadata filters
 
         Returns:
-            Set of supported extensions (e.g., {'.py', '.pyw'})
+            List of CodeEntity objects ranked by relevance
         """
-        pass
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_collection_stats(self) -> dict:
+        """Get statistics about the stored collection.
+
+        Returns:
+            Dictionary with collection metadata.
+        """
+        raise NotImplementedError

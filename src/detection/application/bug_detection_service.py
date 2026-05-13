@@ -6,8 +6,11 @@ a unified interface for bug detection.
 """
 
 import asyncio
+import inspect
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import TYPE_CHECKING
 from loguru import logger
 from src.detection.domain.entities import (
     BugSeverity,
@@ -19,6 +22,11 @@ from src.detection.domain.interfaces import IBugDetector
 from src.detection.infrastructure.static_analyzer import StaticAnalyzer
 from src.detection.infrastructure.test_failure_parser import TestFailureParser
 from src.discovery.infrastructure.pattern_detector import PatternDetector
+from src.fix_agent_orchestration.domain.interfaces import ILLMClient
+
+
+# Thread pool for running sync detectors concurrently
+_executor = ThreadPoolExecutor(max_workers=4)
 
 
 class BugDetectionService:
@@ -36,7 +44,7 @@ class BugDetectionService:
             print(bug)
     """
 
-    def __init__(self, detectors: list[IBugDetector | PatternDetector] | None = None):
+    def __init__(self, detectors: list[IBugDetector] | None = None):
         """Initialize the detection service.
 
         Args:
@@ -45,8 +53,7 @@ class BugDetectionService:
                 pattern detector, test failures).
         """
         if detectors is None:
-            # Use default detectors
-            self._detectors: list[IBugDetector | PatternDetector] = [
+            self._detectors: list[IBugDetector] = [
                 StaticAnalyzer(tools=["mypy", "pylint", "ruff"]),
                 PatternDetector(),  # Always available, no external deps
                 TestFailureParser(),
@@ -67,16 +74,15 @@ class BugDetectionService:
         path: str | Path,
         include_tests: bool = True,
         use_llm_discovery: bool = False,
-        llm_client=None,
+        llm_client: "ILLMClient | None" = None,
     ) -> DetectionResult:
-        """Run comprehensive bug detection.
+        """Run comprehensive bug detection (async).
 
-        This method:
-        1. Detects if path is file or directory
-        2. Runs all registered detectors
-        3. Aggregates results
-        4. Deduplicates bugs
-        5. Sorts by priority
+        Orchestrates multiple detectors (static analysis, pattern matching,
+        test failures, and optional LLM discovery) concurrently.
+
+        This must be called from within an async context (e.g. inside
+        asyncio.run() or another async function).
 
         Args:
             path: File or directory to analyze
@@ -101,45 +107,43 @@ class BugDetectionService:
         self,
         file_path: Path,
         use_llm_discovery: bool,
-        llm_client=None,
+        llm_client: "ILLMClient | None",
     ) -> DetectionResult:
-        """Detect bugs in a single file.
-
-        Args:
-            file_path: File to analyze
-            use_llm_discovery: Whether to use LLM discovery
-            llm_client: LLM client for discovery
-
-        Returns:
-            DetectionResult with found bugs
-        """
+        """Detect bugs in a single file via async subprocesses."""
         logger.info(f"Starting bug detection for file: {file_path}")
-        result = None
         start_time = time.perf_counter()
         all_bugs: list[DetectedBug] = []
         tools_run: list[str] = []
         errors: list[str] = []
 
-        # Run each detector on the file
+        # Run each detector on the file concurrently
+        tasks: list[asyncio.Task] = []
         for detector in self._detectors:
             if not detector.is_available:
                 continue
 
-            # Check if detector supports single file detection
-            if hasattr(detector, 'detect_file'):
+            if hasattr(detector, "detect_file"):
                 logger.info(f"Running {detector.name} on file...")
-                try:
-                    bugs = await detector.detect_file(file_path)
-                    logger.info(f"Found {len(bugs)} bugs")
-                    all_bugs.extend(bugs)
-                    tools_run.append(detector.name)
-                except Exception as e:
-                    error_msg = f"{detector.name} failed: {e}"
-                    logger.error(f"{error_msg}")
-                    errors.append(error_msg)
+                # Check if detector.detect_file is async or sync
+                if inspect.iscoroutinefunction(detector.detect_file):
+                    tasks.append(asyncio.create_task(detector.detect_file(file_path)))
+                else:
+                    # Run sync function in thread pool
+                    loop = asyncio.get_running_loop()
+                    tasks.append(loop.run_in_executor(_executor, detector.detect_file, file_path))
+                tools_run.append(detector.name)
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Detection failed: {result}")
+                    errors.append(str(result))
+                else:
+                    all_bugs.extend(result)
 
         # Add LLM discovery if requested
-        if use_llm_discovery and llm_client:
+        if use_llm_discovery and llm_client is not None:
             from src.detection.infrastructure.llm_bug_detector import LLMBugDetector
             logger.info("Running LLM-based discovery...")
             try:
@@ -150,7 +154,7 @@ class BugDetectionService:
                 tools_run.append("LLM-Discovery")
             except Exception as e:
                 error_msg = f"LLM discovery failed: {e}"
-                logger.error(f"{error_msg}")
+                logger.error(error_msg)
                 errors.append(error_msg)
 
         # Deduplicate bugs
@@ -159,7 +163,6 @@ class BugDetectionService:
         end_time = time.perf_counter()
         duration = end_time - start_time
 
-        # Create result
         result = DetectionResult(
             bugs=unique_bugs,
             duration_seconds=duration,
@@ -168,9 +171,7 @@ class BugDetectionService:
             errors=errors,
         )
 
-        # Print summary
         self._print_summary(result)
-
         return result
 
     async def _detect_directory(
@@ -178,19 +179,9 @@ class BugDetectionService:
         directory: Path,
         include_tests: bool,
         use_llm_discovery: bool,
-        llm_client=None,
+        llm_client: "ILLMClient | None",
     ) -> DetectionResult:
-        """Detect bugs in a directory.
-
-        Args:
-            directory: Directory to analyze
-            include_tests: Whether to include test files
-            use_llm_discovery: Whether to use LLM discovery
-            llm_client: LLM client for discovery
-
-        Returns:
-            DetectionResult with found bugs
-        """
+        """Detect bugs in a directory via async subprocesses."""
         logger.info(f"Starting bug detection for directory: {directory}")
 
         start_time = time.perf_counter()
@@ -201,25 +192,34 @@ class BugDetectionService:
         # Count files
         files_analyzed = self._count_python_files(directory, include_tests)
 
-        # Run each detector
+        # Run each detector concurrently
+        tasks: list[asyncio.Task] = []
         for detector in self._detectors:
             if not detector.is_available:
                 logger.info(f"Skipping {detector.name} (not available)")
                 continue
 
             logger.info(f"Running {detector.name}...")
-            try:
-                bugs = await detector.detect(directory)
-                logger.info(f"Found {len(bugs)} bugs")
-                all_bugs.extend(bugs)
-                tools_run.append(detector.name)
-            except Exception as e:
-                error_msg = f"{detector.name} failed: {e}"
-                logger.error(f"{error_msg}")
-                errors.append(error_msg)
+            # Check if detector.detect is async or sync
+            if inspect.iscoroutinefunction(detector.detect):
+                tasks.append(asyncio.create_task(detector.detect(directory)))
+            else:
+                # Run sync function in thread pool
+                loop = asyncio.get_running_loop()
+                tasks.append(loop.run_in_executor(_executor, detector.detect, directory))
+            tools_run.append(detector.name)
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Detection failed: {result}")
+                    errors.append(str(result))
+                else:
+                    all_bugs.extend(result)
 
         # Add LLM discovery if requested
-        if use_llm_discovery and llm_client:
+        if use_llm_discovery and llm_client is not None:
             from src.detection.infrastructure.llm_bug_detector import LLMBugDetector
             logger.info("Running LLM-based discovery...")
             try:
@@ -230,7 +230,7 @@ class BugDetectionService:
                 tools_run.append("LLM-Discovery")
             except Exception as e:
                 error_msg = f"LLM discovery failed: {e}"
-                logger.error(f"{error_msg}")
+                logger.error(error_msg)
                 errors.append(error_msg)
 
         # Deduplicate bugs
@@ -239,7 +239,6 @@ class BugDetectionService:
         end_time = time.perf_counter()
         duration = end_time - start_time
 
-        # Create result
         result = DetectionResult(
             bugs=unique_bugs,
             duration_seconds=duration,
@@ -248,12 +247,10 @@ class BugDetectionService:
             errors=errors,
         )
 
-        # Print summary
         self._print_summary(result)
-
         return result
 
-    async def detect_single_bug(
+    def detect_single_bug(
         self,
         file_path: str | Path,
         bug_description: str,
@@ -277,9 +274,9 @@ class BugDetectionService:
             if not detector.is_available:
                 continue
 
-            if hasattr(detector, 'detect_file'):
+            if hasattr(detector, "detect_file"):
                 try:
-                    bugs = await detector.detect_file(file_path)
+                    bugs = detector.detect_file(file_path)
                     all_bugs.extend(bugs)
                 except Exception:
                     pass  # Continue with other detectors

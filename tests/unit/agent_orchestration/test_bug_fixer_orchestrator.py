@@ -50,8 +50,8 @@ class TestBugFixerOrchestrator:
     def mock_vector_store(self):
         """Create mock vector store."""
         store = MagicMock(spec=ChromaStore)
-        store.similarity_search = AsyncMock(return_value=[])
-        store.get_collection_stats = AsyncMock(return_value={
+        store.similarity_search = MagicMock(return_value=[])
+        store.get_collection_stats = MagicMock(return_value={
             "total_entities": 10,
             "collection_name": "test",
             "entity_type_counts": {},

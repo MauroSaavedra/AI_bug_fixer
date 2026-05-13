@@ -64,7 +64,7 @@ def create_llm_client(config):
         raise ValueError(f"Unknown LLM provider: {config.llm_provider}")
 
 
-async def ingest_codebase(directory: str = "./src") -> dict:
+def ingest_codebase(directory: str = "./src") -> dict:
     """Ingest code from directory into vector store.
 
     This sets up the knowledge base for the bug fixing system by:
@@ -102,12 +102,12 @@ async def ingest_codebase(directory: str = "./src") -> dict:
     )
 
     # Run ingestion
-    stats = await ingest_service.execute(directory)
+    stats = ingest_service.execute(directory)
 
     return stats
 
 @observe(name="detect_bugs")
-async def detect_bugs(directory: str, severity: str | None = None, use_llm: bool = False) -> None:
+def detect_bugs(directory: str, severity: str | None = None, use_llm: bool = False) -> None:
     """Detect bugs in codebase using static analysis.
 
     Runs multiple static analysis tools and reports found bugs.
@@ -141,11 +141,11 @@ async def detect_bugs(directory: str, severity: str | None = None, use_llm: bool
 
     # Run detection
     try:
-        result = await detection_service.detect_bugs(
+        result = asyncio.run(detection_service.detect_bugs(
             directory,
             use_llm_discovery=use_llm,
             llm_client=llm_client,
-        )
+        ))
     except FileNotFoundError as e:
         logger.error(f"{e}")
         return
@@ -191,7 +191,7 @@ async def detect_bugs(directory: str, severity: str | None = None, use_llm: bool
             logger.info(f"{error}")
 
 @observe(name="detect_and_fix_bugs")
-async def detect_and_fix_bugs(
+def detect_and_fix_bugs(
     directory: str,
     severity: str | None = None,
     interactive: bool = True,
@@ -207,7 +207,7 @@ async def detect_and_fix_bugs(
         interactive: Whether to ask for confirmation before each fix
     """
     # Load configuration
-    config = get_settings()    
+    config = get_settings()
     if severity is None:
         severity = config.detection_severity_threshold
 
@@ -225,11 +225,11 @@ async def detect_and_fix_bugs(
 
     # Run detection
     try:
-        result = await detection_service.detect_bugs(
+        result = asyncio.run(detection_service.detect_bugs(
             directory,
             use_llm_discovery=use_llm,
             llm_client=llm_client,
-        )
+        ))
     except FileNotFoundError as e:
         logger.error(f"{e}")
         return
@@ -257,10 +257,10 @@ async def detect_and_fix_bugs(
     )
 
     # Check if code is indexed
-    stats = await vector_db.get_collection_stats()
+    stats = vector_db.get_collection_stats()
     if stats["total_entities"] == 0:
         logger.info("Indexing codebase first...")
-        await ingest_codebase(directory)
+        ingest_codebase(directory)
 
     # Fix each bug
     fixed_count = 0
@@ -271,7 +271,7 @@ async def detect_and_fix_bugs(
         llm_client=llm_client,
         vector_store=vector_db,
         temperature=0.1,
-        )
+    )
 
     for i, bug in enumerate(bugs_to_fix, 1):
         logger.info(f"\n{'='*60}")
@@ -293,10 +293,10 @@ async def detect_and_fix_bugs(
 
         # Fix the bug
         try:
-            fix_result = await orchestrator.fix_bug(
+            fix_result = asyncio.run(orchestrator.fix_bug(
                 user_goal=bug.to_user_goal(),
                 max_retries=config.max_retries,
-            )
+            ))
             if fix_result.success:
                 logger.info(f"Fixed successfully!")
                 if fix_result.fix:
@@ -321,8 +321,9 @@ async def detect_and_fix_bugs(
     logger.info(f"   Failed: {failed_count}")
     logger.info(f"   Skipped: {skipped_count}")
 
+
 @observe(name="fix_bug_workflow")
-async def fix_bug(user_goal: str, max_retries: int = 3) -> None:
+def fix_bug(user_goal: str, max_retries: int = 3) -> None:
     """Fix a bug using the multi-agent system.
 
     Orchestrates Planner, Coder, and Reviewer agents to:
@@ -357,7 +358,7 @@ async def fix_bug(user_goal: str, max_retries: int = 3) -> None:
     )
 
     # Check if we have indexed code
-    stats = await vector_db.get_collection_stats()
+    stats = vector_db.get_collection_stats()
     logger.info(f"Vector Store Stats:")
     logger.info(f"Total entities: {stats['total_entities']}")
     if stats.get("entity_type_counts"):
@@ -376,10 +377,10 @@ async def fix_bug(user_goal: str, max_retries: int = 3) -> None:
     )
 
     # Execute bug fixing
-    result = await orchestrator.fix_bug(
-        user_goal=user_goal,
-        max_retries=max_retries,
-    )
+    result = asyncio.run(orchestrator.fix_bug(
+                user_goal=user_goal,
+                max_retries=config.max_retries,
+    ))
 
     save_fix_result_report(result, 1, config.result_folder)
 
@@ -468,7 +469,7 @@ def ask_use_llm() -> bool:
 
         print("Please enter 'y' or 'n'")
 
-async def main():
+def main():
     """Main entry point with CLI interface."""
     import argparse
 
@@ -554,17 +555,17 @@ Examples:
     try:
         if args.ingest:
             # Run ingestion
-            stats = await ingest_codebase(args.directory)
+            stats = ingest_codebase(args.directory)
             logger.info("Ingestion complete!")
             logger.info(f"Files processed: {stats['total_files']}")
             logger.info(f"Entities indexed: {stats['total_entities']}")
         elif args.detect:
             # Detect only
-            await detect_bugs(args.detect, args.severity, args.use_llm_discovery)
+            detect_bugs(args.detect, args.severity, args.use_llm_discovery)
 
         elif args.detect_and_fix:
             # Detect and fix
-            await detect_and_fix_bugs(
+            detect_and_fix_bugs(
                 args.detect_and_fix,
                 args.severity,
                 args.interactive,
@@ -573,7 +574,7 @@ Examples:
 
         elif args.fix:
             # Fix specific bug
-            await fix_bug(args.fix, args.max_retries)
+            fix_bug(args.fix, args.max_retries)
 
         else:
             # Interactive mode
@@ -590,18 +591,18 @@ Examples:
             choice = input("\nSelect option (1-5): ").strip()
 
             if choice == "1":
-                stats = await ingest_codebase(args.directory)
+                stats = ingest_codebase(args.directory)
                 logger.info("Ingestion complete!")
             elif choice == "2":
                 use_llm = ask_use_llm()
-                await detect_bugs(args.directory, use_llm=use_llm)
+                detect_bugs(args.directory, use_llm=use_llm)
             elif choice == "3":
                 use_llm = ask_use_llm()
-                await detect_and_fix_bugs(args.directory, interactive=True, use_llm=use_llm)
+                detect_and_fix_bugs(args.directory, interactive=True, use_llm=use_llm)
             elif choice == "4":
                 user_goal = input("\nDescribe the bug to fix: ").strip()
                 if user_goal:
-                    await fix_bug(user_goal, args.max_retries)
+                    fix_bug(user_goal, args.max_retries)
                 else:
                     logger.info("No bug description provided")
             else:
@@ -621,5 +622,5 @@ Examples:
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = main()
     exit(exit_code if exit_code else 0)

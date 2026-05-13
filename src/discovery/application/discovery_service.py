@@ -20,10 +20,6 @@ class DiscoveryService:
     - Pattern-based detection (fast, no LLM)
     - Static analysis (mypy, pylint, ruff)
     - Optional LLM-based discovery (slow but thorough)
-
-    Usage:
-        service = DiscoveryService()
-        result = await service.discover_bugs("./src")
     """
 
     def __init__(
@@ -48,7 +44,7 @@ class DiscoveryService:
         self._static_analyzer = StaticAnalyzer() if use_static_analysis else None
         self._bug_detection = BugDetectionService()
 
-    async def discover_bugs(
+    def discover_bugs(
         self,
         directory: str | Path,
         max_findings: int | None = None,
@@ -71,14 +67,14 @@ class DiscoveryService:
         # Pattern-based detection
         if self.use_patterns and self._pattern_detector:
             logger.info("Running pattern detection...")
-            bugs = await self._run_pattern_detection(directory)
+            bugs = self._run_pattern_detection(directory)
             all_bugs.extend(bugs)
             logger.info(f"Found {len(bugs)} pattern violations")
 
         # Static analysis
         if self.use_static_analysis:
             logger.info("Running static analysis...")
-            result = await self._bug_detection.detect_bugs(directory)
+            result = self._bug_detection.detect_bugs(directory)
             all_bugs.extend(result.bugs)
             logger.info(f"Found {len(result.bugs)} static analysis issues")
 
@@ -104,7 +100,7 @@ class DiscoveryService:
 
         return result
 
-    async def _run_pattern_detection(self, directory: Path) -> list[DetectedBug]:
+    def _run_pattern_detection(self, directory: Path) -> list[DetectedBug]:
         """Run pattern-based detection on directory."""
         if not self._pattern_detector:
             return []

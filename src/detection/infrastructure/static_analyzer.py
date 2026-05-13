@@ -1,13 +1,13 @@
 """Static analysis infrastructure for bug detection.
 
 This module implements bug detection using static analysis tools
-like mypy, pylint, and ruff.
+like mypy, pylint, and ruff using async subprocesses for true concurrency.
 """
 
+import asyncio
 import json
 import re
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 from loguru import logger
@@ -66,7 +66,9 @@ class StaticAnalyzer(IBugDetector):
         return self._available_tools[tool]
 
     async def detect(self, directory: str | Path) -> list[DetectedBug]:
-        """Run static analysis on a directory.
+        """Run static analysis on a directory concurrently.
+
+        Runs mypy, pylint, and ruff in parallel via asyncio.gather().
 
         Args:
             directory: Directory to analyze
@@ -75,24 +77,25 @@ class StaticAnalyzer(IBugDetector):
             List of detected bugs from all available tools
         """
         directory = Path(directory)
-        all_bugs: list[DetectedBug] = []
+        tasks: list[asyncio.Task[list[DetectedBug]]] = []
 
         if "mypy" in self.tools and self._check_tool("mypy"):
-            bugs = await self._run_mypy(directory)
-            all_bugs.extend(bugs)
+            tasks.append(asyncio.create_task(self._run_mypy(directory)))
 
         if "pylint" in self.tools and self._check_tool("pylint"):
-            bugs = await self._run_pylint(directory)
-            all_bugs.extend(bugs)
+            tasks.append(asyncio.create_task(self._run_pylint(directory)))
 
         if "ruff" in self.tools and self._check_tool("ruff"):
-            bugs = await self._run_ruff(directory)
-            all_bugs.extend(bugs)
+            tasks.append(asyncio.create_task(self._run_ruff(directory)))
 
+        results = await asyncio.gather(*tasks)
+        all_bugs: list[DetectedBug] = [bug for result in results for bug in result]
         return all_bugs
 
     async def detect_file(self, file_path: str | Path) -> list[DetectedBug]:
-        """Run static analysis on a single file.
+        """Run static analysis on a single file concurrently.
+
+        Runs mypy, pylint, and ruff in parallel via asyncio.gather().
 
         Args:
             file_path: File to analyze
@@ -101,63 +104,70 @@ class StaticAnalyzer(IBugDetector):
             List of detected bugs
         """
         file_path = Path(file_path)
-        all_bugs: list[DetectedBug] = []
+        tasks: list[asyncio.Task[list[DetectedBug]]] = []
 
         if "mypy" in self.tools and self._check_tool("mypy"):
-            bugs = await self._run_mypy_on_file(file_path)
-            all_bugs.extend(bugs)
+            tasks.append(asyncio.create_task(self._run_mypy_on_file(file_path)))
 
         if "pylint" in self.tools and self._check_tool("pylint"):
-            bugs = await self._run_pylint_on_file(file_path)
-            all_bugs.extend(bugs)
+            tasks.append(asyncio.create_task(self._run_pylint_on_file(file_path)))
 
         if "ruff" in self.tools and self._check_tool("ruff"):
-            bugs = await self._run_ruff_on_file(file_path)
-            all_bugs.extend(bugs)
+            tasks.append(asyncio.create_task(self._run_ruff_on_file(file_path)))
 
+        results = await asyncio.gather(*tasks)
+        all_bugs: list[DetectedBug] = [bug for result in results for bug in result]
         return all_bugs
 
     async def _run_mypy(self, directory: Path) -> list[DetectedBug]:
-        """Run mypy type checking."""
+        """Run mypy type checking via async subprocess."""
+        proc = await asyncio.create_subprocess_exec(
+            "mypy",
+            str(directory),
+            "--show-error-codes",
+            "--show-column-numbers",
+            "--no-error-summary",
+            "--no-color-output",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            result = subprocess.run(
-                [
-                    "mypy",
-                    str(directory),
-                    "--show-error-codes",
-                    "--show-column-numbers",
-                    "--no-error-summary",
-                    "--no-color-output",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=120
             )
-
-            return self._parse_mypy_output(result.stdout + result.stderr)
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            output = (stdout + stderr).decode("utf-8", errors="replace")
+            return self._parse_mypy_output(output)
+        except asyncio.TimeoutError:
+            logger.warning("mypy timed out after 120s")
+            proc.kill()
+            return []
+        except Exception as e:
             logger.warning(f"mypy failed: {e}")
             return []
 
     async def _run_mypy_on_file(self, file_path: Path) -> list[DetectedBug]:
-        """Run mypy on a single file."""
+        """Run mypy on a single file via async subprocess."""
+        proc = await asyncio.create_subprocess_exec(
+            "mypy",
+            str(file_path),
+            "--show-error-codes",
+            "--show-column-numbers",
+            "--no-error-summary",
+            "--no-color-output",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            result = subprocess.run(
-                [
-                    "mypy",
-                    str(file_path),
-                    "--show-error-codes",
-                    "--show-column-numbers",
-                    "--no-error-summary",
-                    "--no-color-output",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=60
             )
-
-            return self._parse_mypy_output(result.stdout + result.stderr)
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            output = (stdout + stderr).decode("utf-8", errors="replace")
+            return self._parse_mypy_output(output)
+        except asyncio.TimeoutError:
+            logger.warning(f"mypy timed out on {file_path} after 60s")
+            proc.kill()
+            return []
+        except Exception as e:
             logger.warning(f"mypy failed on {file_path}: {e}")
             return []
 
@@ -200,41 +210,49 @@ class StaticAnalyzer(IBugDetector):
         return bugs
 
     async def _run_pylint(self, directory: Path) -> list[DetectedBug]:
-        """Run pylint code analysis."""
+        """Run pylint code analysis via async subprocess."""
+        proc = await asyncio.create_subprocess_exec(
+            "pylint",
+            str(directory),
+            "--output-format=json",
+            "--disable=R,C",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            result = subprocess.run(
-                [
-                    "pylint",
-                    str(directory),
-                    "--output-format=json",
-                    "--disable=R,C",  # Disable refactoring and convention messages
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=120
             )
-
-            return self._parse_pylint_json(result.stdout)
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            output = stdout.decode("utf-8", errors="replace")
+            return self._parse_pylint_json(output)
+        except asyncio.TimeoutError:
+            logger.warning("pylint timed out after 120s")
+            proc.kill()
+            return []
+        except Exception as e:
             logger.warning(f"pylint failed: {e}")
             return []
 
     async def _run_pylint_on_file(self, file_path: Path) -> list[DetectedBug]:
-        """Run pylint on a single file."""
+        """Run pylint on a single file via async subprocess."""
+        proc = await asyncio.create_subprocess_exec(
+            "pylint",
+            str(file_path),
+            "--output-format=json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            result = subprocess.run(
-                [
-                    "pylint",
-                    str(file_path),
-                    "--output-format=json",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=60
             )
-
-            return self._parse_pylint_json(result.stdout)
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            output = stdout.decode("utf-8", errors="replace")
+            return self._parse_pylint_json(output)
+        except asyncio.TimeoutError:
+            logger.warning(f"pylint timed out on {file_path} after 60s")
+            proc.kill()
+            return []
+        except Exception as e:
             logger.warning(f"pylint failed on {file_path}: {e}")
             return []
 
@@ -276,42 +294,50 @@ class StaticAnalyzer(IBugDetector):
         return bugs
 
     async def _run_ruff(self, directory: Path) -> list[DetectedBug]:
-        """Run ruff linter."""
+        """Run ruff linter via async subprocess."""
+        proc = await asyncio.create_subprocess_exec(
+            "ruff",
+            "check",
+            str(directory),
+            "--output-format=json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            result = subprocess.run(
-                [
-                    "ruff",
-                    "check",
-                    str(directory),
-                    "--output-format=json",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=60
             )
-
-            return self._parse_ruff_json(result.stdout)
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            output = stdout.decode("utf-8", errors="replace")
+            return self._parse_ruff_json(output)
+        except asyncio.TimeoutError:
+            logger.warning("ruff timed out after 60s")
+            proc.kill()
+            return []
+        except Exception as e:
             logger.warning(f"ruff failed: {e}")
             return []
 
     async def _run_ruff_on_file(self, file_path: Path) -> list[DetectedBug]:
-        """Run ruff on a single file."""
+        """Run ruff on a single file via async subprocess."""
+        proc = await asyncio.create_subprocess_exec(
+            "ruff",
+            "check",
+            str(file_path),
+            "--output-format=json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            result = subprocess.run(
-                [
-                    "ruff",
-                    "check",
-                    str(file_path),
-                    "--output-format=json",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=30
             )
-
-            return self._parse_ruff_json(result.stdout)
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            output = stdout.decode("utf-8", errors="replace")
+            return self._parse_ruff_json(output)
+        except asyncio.TimeoutError:
+            logger.warning(f"ruff timed out on {file_path} after 30s")
+            proc.kill()
+            return []
+        except Exception as e:
             logger.warning(f"ruff failed on {file_path}: {e}")
             return []
 

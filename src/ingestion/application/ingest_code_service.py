@@ -10,6 +10,7 @@ from src.ingestion.domain.entities import CodeEntity
 from src.ingestion.domain.interfaces import IFileSystemLoader, IVectorStore
 from loguru import logger
 
+
 class IngestCodeService:
     """Orchestrates the code ingestion pipeline."""
 
@@ -27,7 +28,7 @@ class IngestCodeService:
         self.file_source = file_source
         self.vector_store = vector_store
 
-    async def execute(self, directory_path: str) -> dict:
+    def execute(self, directory_path: str) -> dict:
         """Execute the full ingestion pipeline.
 
         Pipeline steps:
@@ -78,10 +79,10 @@ class IngestCodeService:
         for entity_type, count in sorted(entity_breakdown.items()):
             logger.info(f"{entity_type}: {count}")
 
-        # 3. Persistence: Save to vector store
+        # 3. Persistence: Save to vector store (synchronous)
         logger.info(f"Indexing to vector store...")
         try:
-            await self.vector_store.save_entities(entities)
+            self.vector_store.save_entities(entities)
         except Exception as e:
             logger.error(f"Error during vector storage: {e}")
             raise
